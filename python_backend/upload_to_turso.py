@@ -205,6 +205,21 @@ def upload():
         local)
 
     local.close()
+
+    # Step 3: Build FTS5 full-text search index on Turso
+    print("\nBuilding FTS5 full-text search index...")
+    try:
+        execute('DROP TABLE IF EXISTS transcript_fts')
+    except Exception as e:
+        print(f"  Warning dropping FTS table: {e}")
+    execute('''CREATE VIRTUAL TABLE transcript_fts USING fts5(
+        text,
+        content=transcript_segments,
+        content_rowid=rowid
+    )''')
+    execute("INSERT INTO transcript_fts(transcript_fts) VALUES('rebuild')")
+    print("  ✅ FTS5 index built.")
+
     elapsed = time.time() - start_total
     print(f"\nUpload complete! Total time: {elapsed:.1f}s ({elapsed/60:.1f} min)")
 

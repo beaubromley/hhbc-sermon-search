@@ -41,5 +41,8 @@ Thumbs.db
 # Temp files
 *.tmp
 
+# Logs
+python_backend/logs/
+
 # Claude session files
 .claude/
