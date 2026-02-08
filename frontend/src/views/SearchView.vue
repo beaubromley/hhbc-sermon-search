@@ -1514,6 +1514,19 @@ tr.group-child td {
     flex-wrap: wrap;
   }
 
+  .search-filters .filter-group {
+    width: 100%;
+  }
+
+  .search-filters .filter-group select,
+  .search-filters .filter-group input[type="month"] {
+    width: 100%;
+  }
+
+  .search-filters .clear-btn {
+    width: fit-content;
+  }
+
   .results-table {
     font-size: 0.85rem;
   }

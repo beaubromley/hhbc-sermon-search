@@ -472,8 +472,24 @@ tr:hover {
 }
 
 @media (max-width: 768px) {
+  .video-list-view {
+    padding: 0;
+  }
+
+  .filters {
+    padding: 1rem;
+  }
+
   .filter-row {
     grid-template-columns: 1fr;
+  }
+
+  .filter-group select {
+    width: 100%;
+  }
+
+  .clear-btn {
+    width: fit-content;
   }
 
   table {
