@@ -203,6 +203,7 @@
             <div class="modal-meta">
               {{ transcriptModal.speaker }} — {{ transcriptModal.date }}
               <a :href="transcriptModal.videoUrl" target="_blank" class="modal-watch">▶ Watch</a>
+              <button v-if="transcriptModal.segments.length" @click="copyTranscript" class="modal-copy">{{ transcriptCopied ? '✓ Copied' : 'Copy Transcript' }}</button>
             </div>
           </div>
           <button @click="closeTranscript" class="modal-close">✕</button>
@@ -266,6 +267,7 @@ export default {
       contextSegments: [],
       contextLoading: false,
       speakerStats: null,
+      transcriptCopied: false,
       transcriptModal: {
         open: false,
         title: '',
@@ -567,6 +569,24 @@ export default {
       }
       this.copiedIndex = index
       setTimeout(() => { this.copiedIndex = null }, 1500)
+    },
+
+    async copyTranscript() {
+      const text = this.transcriptModal.segments.map(s => s.text).join(' ')
+      try {
+        await navigator.clipboard.writeText(text)
+      } catch {
+        const textarea = document.createElement('textarea')
+        textarea.value = text
+        textarea.style.position = 'fixed'
+        textarea.style.left = '-9999px'
+        document.body.appendChild(textarea)
+        textarea.select()
+        document.execCommand('copy')
+        document.body.removeChild(textarea)
+      }
+      this.transcriptCopied = true
+      setTimeout(() => { this.transcriptCopied = false }, 1500)
     },
 
     toggleVideoGroup(videoId) {
@@ -1442,6 +1462,22 @@ tr.group-child td {
 
 .modal-watch:hover {
   text-decoration: underline;
+}
+
+.modal-copy {
+  background: none;
+  border: 1px solid #0068c9;
+  color: #0068c9;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  margin-left: 0.75rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.modal-copy:hover {
+  background: #0068c9;
+  color: white;
 }
 
 .modal-close {
