@@ -1,0 +1,297 @@
+HHBC SERMON SEARCH - HOW TO USE
+===================================
+
+OVERVIEW
+--------
+This system downloads sermons from Henderson Hills Baptist Church's Vimeo channel,
+transcribes them using AI, and provides a searchable web interface with Bible reference
+tracking and theological topic analysis.
+
+Directory Structure:
+------------------
+vimeo_project_v2/
+├── src/                      (Core Python modules)
+│   ├── transcript_manager.py (Database management)
+│   └── __init__.py
+├── scripts/                  (Download & update scripts - LOCAL ONLY)
+│   ├── download_videos.py
+│   ├── download_videos_incremental.py
+│   ├── update_database.py
+│   └── show_kpis.py
+├── local_scripts/            (Advanced processing - LOCAL ONLY)
+│   ├── whisper_transcribe.py
+│   ├── batch_transcribe_parallel.py
+│   ├── extract_bible_references.py
+│   ├── extract_theological_topics.py
+│   └── update_vimeo_urls.py
+├── data/
+│   ├── transcripts/          (VTT files and video metadata)
+│   ├── database/             (SQLite database)
+│   └── temp/                 (Temporary download files)
+├── assets/                   (Images for web interface)
+├── streamlit_app.py          (Web interface)
+├── update_and_run.py         (Main automation script)
+├── push_database.bat         (Push updates to GitHub)
+└── requirements.txt          (Python dependencies for web app)
+
+INITIAL SETUP
+-------------
+1. Install Python 3.13+
+
+2. Create virtual environment:
+   python -m venv venv
+   venv\Scripts\activate
+
+3. Install dependencies:
+   pip install -r requirements_local.txt
+
+4. Install FFmpeg:
+   winget install ffmpeg
+   (Close and reopen terminal after installing)
+
+5. Update Vimeo credentials in src/config.py:
+   - ACCESS_TOKEN
+   - CLIENT_ID
+   - CLIENT_SECRET
+
+QUICK START (Automated - RECOMMENDED)
+--------------------------------------
+Run the complete update process:
+   python update_and_run.py
+
+This automatically runs:
+1. 📥 Download new videos and transcripts from Vimeo
+2. 💾 Update the searchable database with new transcripts
+3. 📖 Extract Bible references from new videos (incremental)
+4. 💭 Extract theological topics from new videos (incremental)
+5. 📊 Show updated statistics
+
+The script runs automatically without prompts. Bible and topic extraction only
+process NEW videos, making updates fast (typically 1-2 minutes for new content).
+
+RUNNING THE WEB INTERFACE
+--------------------------
+Local testing:
+   streamlit run streamlit_app.py
+
+The web app includes:
+- 🏠 Home: Search sermons by keywords in titles and transcripts
+- 📚 Video List: Browse and filter all sermons by speaker, year, Bible book, or topic
+- 📖 Bible Heat Map: Interactive visualization of Bible book references
+- 👤 Speaker Stats: Statistics, Bible coverage, and topic emphasis per speaker
+
+UPDATING THE LIVE WEBSITE
+--------------------------
+After running update_and_run.py locally:
+
+1. Push updated database to GitHub:
+   push_database.bat
+
+2. Streamlit Cloud auto-deploys in 1-2 minutes
+3. Live site: https://vimeo-sermon-search.streamlit.app
+
+MANUAL PROCESS (Advanced Users)
+--------------------------------
+If you prefer to run steps individually:
+
+1. Download new videos/transcripts:
+   python scripts/download_videos_incremental.py
+   (or download_videos.py for full refresh)
+
+2. Update database:
+   python scripts/update_database.py
+
+3. Extract Bible references:
+   python local_scripts/extract_bible_references.py
+   (Use --incremental flag for new videos only)
+
+4. Extract theological topics:
+   python local_scripts/extract_theological_topics.py
+   (Use --incremental flag for new videos only)
+
+5. View statistics:
+   python scripts/show_kpis.py
+
+6. Search transcripts:
+   python scripts/search_interface.py
+
+ADDING TRANSCRIPTS TO OLD VIDEOS
+---------------------------------
+For videos without Vimeo transcripts, use Whisper AI:
+
+Single video:
+   python local_scripts/whisper_transcribe.py
+
+Batch processing (all missing transcripts):
+   python local_scripts/batch_transcribe_parallel.py
+
+Whisper Model Options:
+- tiny:  Fastest (~1.5 min/video), lower accuracy
+- base:  Good balance (~3 min/video) [RECOMMENDED]
+- small: Better accuracy (~6 min/video)
+
+Note: Batch processing 1400+ videos takes 2-4 days depending on model.
+The script downloads audio-only and uses parallel downloads for speed.
+
+You can run TWO instances simultaneously (forward and reverse) to cut time in half:
+- Window 1: python local_scripts/batch_transcribe_parallel.py
+- Window 2: python local_scripts/batch_transcribe_reverse.py
+
+DATABASE STRUCTURE
+------------------
+SQLite database with 5 tables:
+
+1. videos - Master video list (title, date, URL, duration)
+2. transcript_segments - Timestamped transcript lines
+3. transcript_search - Full-text search index (FTS5)
+4. bible_references - Extracted Bible book/chapter/verse references
+5. theological_topics - Tagged theological concepts (40+ topics)
+
+All tables are automatically created and maintained by the scripts.
+
+SEARCH FEATURES
+---------------
+The web interface supports:
+- Full-text search across all transcripts
+- Search by video title
+- Filter by speaker, year, Bible book, or theological topic
+- Direct links to exact moments in videos (using player.vimeo.com)
+- Bible reference heat maps showing coverage
+- Speaker statistics and analysis
+- Theological topic tracking
+
+FILTERS AVAILABLE
+-----------------
+- Speaker: Filter by preacher name (extracted from video descriptions)
+- Date/Year: Filter by publication date
+- Bible Book: Show only sermons referencing specific books
+- Theological Topic: Filter by topics like salvation, prayer, grace, etc.
+- Testament: Old Testament, New Testament, or both
+
+BIBLE REFERENCE EXTRACTION
+---------------------------
+Automatically extracts references like:
+- "John 3:16" → John, Chapter 3, Verse 16
+- "Genesis chapter 1" → Genesis, Chapter 1
+- "Psalm 23:1-6" → Psalms, Chapter 23, Verses 1-6
+- "1 Corinthians 13" → 1 Corinthians, Chapter 13
+
+Includes validation:
+- Checks chapter numbers against actual Bible structure
+- Parses combined numbers (e.g., "320" → "3:20")
+- Filters out years (1900-2100) and other false positives
+- Supports 66 Bible books with common abbreviations
+
+THEOLOGICAL TOPICS TRACKED
+---------------------------
+40+ topics including:
+- Core Doctrines: Salvation, Faith, Grace, Sin, Repentance, Forgiveness
+- Trinity: Jesus Christ, God the Father, Holy Spirit, Trinity
+- Christian Life: Prayer, Worship, Obedience, Holiness, Discipleship
+- Church: Church, Baptism, Communion, Church Leadership, Evangelism
+- Eschatology: Heaven, Hell, Second Coming, Resurrection
+- Advanced: Hypostatic Union, Predestination, Spiritual Warfare, Spiritual Gifts
+- Practical: Marriage, Divorce, Family, Service, Stewardship
+- Attributes: Love, Hope, Joy, Peace, Wisdom
+
+TROUBLESHOOTING
+---------------
+If videos don't have transcripts:
+1. Check if Vimeo has auto-captions enabled
+2. Use Whisper AI to generate transcripts locally
+3. Run batch_transcribe_parallel.py for bulk processing
+
+If search isn't finding results:
+1. Make sure update_database.py has been run
+2. Check that VTT files exist in data/transcripts/
+3. Verify database exists at data/database/transcripts.db
+
+If Bible references seem wrong:
+1. Re-run extract_bible_references.py (it clears and re-extracts)
+2. Check validation rules in the script
+3. False positives are filtered by chapter/verse limits
+
+If links show spam check:
+1. New URLs use player.vimeo.com format automatically
+2. Old URLs in database can be updated with update_vimeo_urls.py
+3. New transcripts get correct URLs automatically
+
+If extraction scripts are slow:
+1. Use --incremental flag to only process new videos
+2. Full extraction takes 3-5 minutes for all videos
+3. Incremental extraction takes seconds for new videos only
+
+GIT WORKFLOW
+------------
+Files tracked in GitHub (for live website):
+- streamlit_app.py
+- src/transcript_manager.py
+- data/database/transcripts.db
+- assets/
+- requirements.txt
+
+Files kept LOCAL only (in .gitignore):
+- src/config.py (contains Vimeo credentials)
+- src/video_scraper.py
+- src/utils.py
+- scripts/ (download scripts)
+- local_scripts/ (processing scripts)
+- data/transcripts/*.vtt (too large)
+- venv/ (virtual environment)
+- push_database.bat
+
+To push updates after running update_and_run.py:
+   push_database.bat
+
+This commits and pushes the updated database to GitHub.
+Streamlit Cloud auto-deploys in 1-2 minutes.
+
+TYPICAL WORKFLOW
+----------------
+Weekly update routine:
+1. Run: python update_and_run.py
+   - Downloads new sermons
+   - Updates database
+   - Extracts Bible references and topics
+   - Shows statistics
+
+2. Run: push_database.bat
+   - Pushes updates to GitHub
+   - Live site updates automatically
+
+3. Done! New sermons are searchable on the live site.
+
+PERFORMANCE NOTES
+-----------------
+- Incremental downloads: Very fast, stops at first known video
+- Full downloads: Slower but thorough, checks entire channel
+- Database processing: Handles 1700+ videos efficiently
+- Search: Fast full-text search across all content
+- Whisper transcription: CPU-intensive, ~3 min per video with base model
+- Bible extraction: ~30 seconds for all videos, <5 seconds incremental
+- Topic extraction: ~45 seconds for all videos, <5 seconds incremental
+- URL updates: One-time operation, not needed for new videos
+
+SYSTEM REQUIREMENTS
+-------------------
+- Python 3.13+
+- 16 GB RAM (for Whisper transcription)
+- 6+ CPU cores recommended for batch transcription
+- ~2 GB disk space for database and transcripts
+- Internet connection for Vimeo API
+- FFmpeg for audio extraction (Whisper transcription only)
+
+CREDITS
+-------
+- Vimeo API: Video and transcript downloads
+- OpenAI Whisper: AI transcription for videos without captions
+- Streamlit: Web interface framework
+- SQLite FTS5: Full-text search engine
+- Plotly: Interactive visualizations
+- yt-dlp: Video downloading
+- FFmpeg: Audio extraction
+
+For questions or issues, check the GitHub repository.
+
+Live Site: https://vimeo-sermon-search.streamlit.app
+GitHub: https://github.com/beaubromley/vimeo-sermon-search

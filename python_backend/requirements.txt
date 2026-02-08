@@ -1,0 +1,3 @@
+webvtt-py==0.4.6
+PyVimeo==1.1.2
+requests

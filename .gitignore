@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+python_backend/.venv/
+
+# Large data files (served from Turso, not needed in repo)
+frontend/public/data/transcripts.db
+frontend/public/data/transcripts.db.gz
+frontend/public/data/transcripts.db.gz.part*
+frontend/public/data/videos.json
+frontend/public/data/bible_references.json
+frontend/public/data/theological_topics.json
+frontend/split_db.py
+
+# Python backend data
+python_backend/data/
+
+# Backup data
+backup_data/
+
+# VTT transcript files
+*.vtt
+
+# Credentials
+python_backend/src/config.py
+frontend/.env
+
+# Build output
+frontend/dist/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temp files
+*.tmp
+
+# Claude session files
+.claude/

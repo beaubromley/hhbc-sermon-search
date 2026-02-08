@@ -1,0 +1,6 @@
+PyVimeo==1.1.2
+webvtt-py==0.4.6
+streamlit
+pandas
+openai-whisper
+ffmpeg-python
