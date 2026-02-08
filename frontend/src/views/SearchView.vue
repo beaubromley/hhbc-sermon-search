@@ -8,7 +8,7 @@
         v-model="searchQuery"
         @input="handleSearch"
         type="text"
-        placeholder="Search sermons by title or transcript content..."
+        placeholder="Enter search here"
         class="search-input"
       >
     </div>
@@ -26,12 +26,12 @@
         </div>
 
         <div class="filter-group">
-          <label>From</label>
+          <label>Start Date</label>
           <input type="month" v-model="filters.dateFrom" @change="handleSearch" min="2015-01" :max="filters.dateTo || currentMonth">
         </div>
 
         <div class="filter-group">
-          <label>To</label>
+          <label>End Date</label>
           <input type="month" v-model="filters.dateTo" @change="handleSearch" :min="filters.dateFrom || '2015-01'" :max="currentMonth">
         </div>
 
