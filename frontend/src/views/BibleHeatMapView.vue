@@ -198,7 +198,11 @@
                 class="chapter-sermon-item"
               >
                 <div class="sermon-content">
-                  <a :href="sermon.url" target="_blank">{{ sermon.title }}</a>
+                  <a href="#" @click.prevent="openTranscript(sermon)" class="sermon-title-link">{{ sermon.title }}</a>
+                  <span class="sermon-actions">
+                    <a :href="sermon.watchUrl" target="_blank" class="action-link" title="Watch">▶</a>
+                    <a href="#" @click.prevent="openTranscript(sermon)" class="action-link" title="Read transcript">📄</a>
+                  </span>
                   <p v-if="sermon.context" class="sermon-context">{{ sermon.context }}</p>
                 </div>
                 <span class="sermon-date">{{ sermon.date }}</span>
@@ -213,7 +217,11 @@
           <h4>Recent Sermons (Top 10)</h4>
           <div class="sermon-list">
             <div v-for="sermon in getSermons()" :key="sermon.url" class="sermon-item">
-              <a :href="sermon.url" target="_blank">{{ sermon.title }}</a>
+              <a href="#" @click.prevent="openTranscript(sermon)" class="sermon-title-link">{{ sermon.title }}</a>
+              <span class="sermon-actions">
+                <a :href="sermon.url" target="_blank" class="action-link" title="Watch">▶</a>
+                <a href="#" @click.prevent="openTranscript(sermon)" class="action-link" title="Read transcript">📄</a>
+              </span>
               <span class="sermon-date">{{ sermon.date }}</span>
             </div>
           </div>
@@ -224,6 +232,35 @@
 
     <div v-else class="no-results">
       No Bible references found
+    </div>
+
+    <div v-if="transcriptModal.open" class="modal-overlay" @click.self="closeTranscript">
+      <div class="modal-content">
+        <div class="modal-header">
+          <div>
+            <h3>{{ transcriptModal.title }}</h3>
+            <div class="modal-meta">
+              {{ transcriptModal.speaker }} — {{ transcriptModal.date }}
+              <a :href="transcriptModal.videoUrl" target="_blank" class="modal-watch">▶ Watch</a>
+              <button v-if="transcriptModal.segments.length" @click="copyTranscript" class="modal-copy">{{ transcriptCopied ? '✓ Copied' : 'Copy Transcript' }}</button>
+            </div>
+          </div>
+          <button @click="closeTranscript" class="modal-close">✕</button>
+        </div>
+        <div class="modal-body">
+          <div v-if="transcriptModal.loading" class="context-loading">Loading transcript...</div>
+          <div v-else class="transcript-flow">
+            <div
+              v-for="seg in transcriptModal.segments"
+              :key="seg.start_time"
+              class="transcript-line"
+            >
+              <a :href="seg.vimeo_url" target="_blank" class="transcript-time">{{ formatTimestamp(seg.start_time) }}</a>
+              <span>{{ seg.text }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -255,6 +292,17 @@ export default {
       chapterSermonsCache: {},
       uniqueSpeakers: [],
       uniqueYears: [],
+      transcriptCopied: false,
+      transcriptModal: {
+        open: false,
+        title: '',
+        speaker: '',
+        date: '',
+        videoUrl: '',
+        videoId: null,
+        segments: [],
+        loading: false
+      },
       oldTestamentBooks: [
         'Genesis', 'Exodus', 'Leviticus', 'Numbers', 'Deuteronomy',
         'Joshua', 'Judges', 'Ruth', '1 Samuel', '2 Samuel',
@@ -300,6 +348,15 @@ export default {
   async mounted() {
     await this.loadFilters()
     await this.loadData()
+    this._onKeydown = (e) => {
+      if (e.key === 'Escape' && this.transcriptModal.open) {
+        this.closeTranscript()
+      }
+    }
+    document.addEventListener('keydown', this._onKeydown)
+  },
+  beforeUnmount() {
+    document.removeEventListener('keydown', this._onKeydown)
   },
   methods: {
     async loadFilters() {
@@ -420,7 +477,8 @@ export default {
       this.bookSermons = sermonRows.map(row => ({
         title: row.title,
         date: row.date_published.substring(0, 10),
-        url: row.url
+        url: row.url,
+        videoId: row.video_id
       }))
     },
 
@@ -462,7 +520,9 @@ export default {
         return {
           title: row.title,
           date: row.date_published.substring(0, 10),
+          videoId: row.video_id,
           url: `https://player.vimeo.com/video/${row.video_id}#t=${timestamp}s`,
+          watchUrl: `https://player.vimeo.com/video/${row.video_id}#t=${timestamp}s`,
           context: row.context || ''
         }
       })
@@ -487,6 +547,62 @@ export default {
 
     getSermons() {
       return this.bookSermons
+    },
+
+    formatTimestamp(seconds) {
+      const h = Math.floor(seconds / 3600)
+      const m = Math.floor((seconds % 3600) / 60)
+      const s = Math.floor(seconds % 60)
+      if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+      return `${m}:${String(s).padStart(2, '0')}`
+    },
+
+    async openTranscript(sermon) {
+      this.transcriptModal.open = true
+      this.transcriptModal.title = sermon.title
+      this.transcriptModal.speaker = this.speakers[sermon.videoId] || 'Unknown'
+      this.transcriptModal.date = sermon.date
+      this.transcriptModal.videoUrl = sermon.url || sermon.watchUrl
+      this.transcriptModal.videoId = sermon.videoId
+      this.transcriptModal.loading = true
+      this.transcriptModal.segments = []
+      document.body.style.overflow = 'hidden'
+
+      try {
+        const rows = await execute(
+          `SELECT text, start_time, vimeo_url FROM transcript_segments
+           WHERE video_id = ? ORDER BY start_time`,
+          [sermon.videoId]
+        )
+        this.transcriptModal.segments = rows
+      } catch (err) {
+        console.error('Transcript load error:', err)
+      }
+
+      this.transcriptModal.loading = false
+    },
+
+    closeTranscript() {
+      this.transcriptModal.open = false
+      document.body.style.overflow = ''
+    },
+
+    async copyTranscript() {
+      const text = this.transcriptModal.segments.map(s => s.text).join(' ')
+      try {
+        await navigator.clipboard.writeText(text)
+      } catch {
+        const textarea = document.createElement('textarea')
+        textarea.value = text
+        textarea.style.position = 'fixed'
+        textarea.style.left = '-9999px'
+        document.body.appendChild(textarea)
+        textarea.select()
+        document.execCommand('copy')
+        document.body.removeChild(textarea)
+      }
+      this.transcriptCopied = true
+      setTimeout(() => { this.transcriptCopied = false }, 1500)
     }
   }
 }
@@ -889,6 +1005,145 @@ h2 {
   text-align: center;
   padding: 60px 20px;
   color: #31333F;
+}
+
+.sermon-title-link {
+  color: #0068c9;
+  text-decoration: none;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.sermon-title-link:hover {
+  text-decoration: underline;
+}
+
+.sermon-actions {
+  display: inline-flex;
+  gap: 0.5rem;
+  margin-left: 0.5rem;
+}
+
+.action-link {
+  color: #0068c9;
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+
+.action-link:hover {
+  color: #ff2b2b;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 0.5rem;
+  max-width: 800px;
+  width: 90vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid #e6e9ef;
+}
+
+.modal-header h3 {
+  margin: 0 0 0.25rem 0;
+  font-size: 1.1rem;
+  color: #31333F;
+}
+
+.modal-meta {
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.modal-watch {
+  color: #0068c9;
+  text-decoration: none;
+  margin-left: 0.75rem;
+  font-weight: 500;
+}
+
+.modal-watch:hover {
+  text-decoration: underline;
+}
+
+.modal-copy {
+  background: none;
+  border: 1px solid #0068c9;
+  color: #0068c9;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  margin-left: 0.75rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.modal-copy:hover {
+  background: #0068c9;
+  color: white;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 1.25rem;
+  cursor: pointer;
+  color: #555;
+  padding: 0.25rem;
+}
+
+.modal-body {
+  padding: 1.5rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.context-loading {
+  text-align: center;
+  padding: 2rem;
+  color: #555;
+}
+
+.transcript-flow {
+  line-height: 1.7;
+}
+
+.transcript-line {
+  margin-bottom: 0.5rem;
+}
+
+.transcript-time {
+  font-family: monospace;
+  font-size: 0.8rem;
+  color: #0068c9;
+  text-decoration: none;
+  margin-right: 0.5rem;
+  white-space: nowrap;
+}
+
+.transcript-time:hover {
+  text-decoration: underline;
 }
 
 @media (max-width: 768px) {
