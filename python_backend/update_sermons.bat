@@ -21,7 +21,8 @@ echo %date% %time%
 echo.
 
 call .venv\Scripts\activate
-python update_and_export.py
+set PYTHONIOENCODING=utf-8
+python -u update_and_export.py
 
 echo.
 echo ========================================
