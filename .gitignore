@@ -29,6 +29,7 @@ backup_data/
 
 # Credentials
 python_backend/src/config.py
+python_backend/.env
 frontend/.env
 
 # Build output

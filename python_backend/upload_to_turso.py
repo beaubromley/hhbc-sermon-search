@@ -179,7 +179,7 @@ def rebuild_fts5():
         content_rowid=rowid
     )''')
     execute("INSERT INTO transcript_fts(transcript_fts) VALUES('rebuild')")
-    print("  ✅ FTS5 index rebuilt.")
+    print("  FTS5 index rebuilt.")
 
 
 def ensure_tables():
