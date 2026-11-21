@@ -177,6 +177,11 @@ html[data-theme='dark'] iframe {
   filter: invert(1) hue-rotate(180deg);
 }
 
+/* The logo is one dark color on white, so let it invert with the page (light text, dark background). */
+html[data-theme='dark'] .logo {
+  filter: none;
+}
+
 main {
   padding: 0;
   max-width: 100%;
