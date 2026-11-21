@@ -1,8 +1,7 @@
 <template>
   <div id="app">
     <header>
-      <img src="./assets/download.png" alt="HHBC Sermon Search" class="logo" v-if="logoExists">
-      <h1 v-else>HHBC Sermon Search</h1>
+      <img :src="logo" alt="HHBC Sermon Search" class="logo">
     </header>
 
     <nav class="tabs">
@@ -25,6 +24,7 @@
 </template>
 
 <script>
+import logo from './assets/download.png'
 import SearchView from './views/SearchView.vue'
 import VideoListView from './views/VideoListView.vue'
 import BibleHeatMapView from './views/BibleHeatMapView.vue'
@@ -39,7 +39,7 @@ export default {
   data() {
     return {
       currentTab: 'search',
-      logoExists: false,
+      logo,
       tabs: [
         { id: 'search', name: 'Home' },
         { id: 'videos', name: 'Video List' },
@@ -49,7 +49,6 @@ export default {
     }
   },
   async mounted() {
-    this.checkLogo()
     await this.loadSpeakers()
 
     // If URL has search params, ensure we're on the search tab
@@ -59,17 +58,9 @@ export default {
     }
   },
   methods: {
-    checkLogo() {
-      const img = new Image()
-      img.onload = () => { this.logoExists = true }
-      img.onerror = () => { this.logoExists = false }
-      img.src = require('./assets/download.png')
-    },
-
     async loadSpeakers() {
       try {
-        const basePath = process.env.NODE_ENV === 'production' ? '/hhbc-sermon-search/' : '/'
-        const response = await fetch(`${basePath}data/speakers.json`)
+        const response = await fetch(`${import.meta.env.BASE_URL}data/speakers.json`)
         if (response.ok) {
           this.speakers = await response.json()
         }

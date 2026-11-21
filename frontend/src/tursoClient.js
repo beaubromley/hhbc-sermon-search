@@ -1,8 +1,8 @@
 // Turso database client for HHBC Sermon Search
 // Uses the Turso HTTP API with a read-only token (safe for frontend)
 
-const TURSO_URL = process.env.VUE_APP_TURSO_URL
-const TURSO_TOKEN = process.env.VUE_APP_TURSO_TOKEN
+const TURSO_URL = import.meta.env.VITE_TURSO_URL
+const TURSO_TOKEN = import.meta.env.VITE_TURSO_TOKEN
 
 function unwrapValue(cell) {
   if (!cell || cell.type === 'null') return null
@@ -89,4 +89,13 @@ export async function execute(sql, args = []) {
     })
     return obj
   })
+}
+
+// Every transcript segment of one sermon, in order (used by the transcript reader).
+export function fetchTranscript(videoId) {
+  return execute(
+    `SELECT text, start_time, vimeo_url FROM transcript_segments
+     WHERE video_id = ? ORDER BY start_time`,
+    [videoId]
+  )
 }

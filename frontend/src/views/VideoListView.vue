@@ -97,42 +97,21 @@
       No videos match the selected filters
     </div>
 
-    <div v-if="transcriptModal.open" class="modal-overlay" @click.self="closeTranscript">
-      <div class="modal-content">
-        <div class="modal-header">
-          <div>
-            <h3>{{ transcriptModal.title }}</h3>
-            <div class="modal-meta">
-              {{ transcriptModal.speaker }} — {{ transcriptModal.date }}
-              <a :href="transcriptModal.videoUrl" target="_blank" class="modal-watch">▶ Watch</a>
-              <button v-if="transcriptModal.segments.length" @click="copyTranscript" class="modal-copy">{{ transcriptCopied ? '✓ Copied' : 'Copy Transcript' }}</button>
-            </div>
-          </div>
-          <button @click="closeTranscript" class="modal-close">✕</button>
-        </div>
-        <div class="modal-body">
-          <div v-if="transcriptModal.loading" class="context-loading">Loading transcript...</div>
-          <div v-else class="transcript-flow">
-            <div
-              v-for="seg in transcriptModal.segments"
-              :key="seg.start_time"
-              class="transcript-line"
-            >
-              <a :href="seg.vimeo_url" target="_blank" class="transcript-time">{{ formatTimestamp(seg.start_time) }}</a>
-              <span>{{ seg.text }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <TranscriptModal
+      v-if="transcript"
+      :video="transcript"
+      @close="transcript = null"
+    />
   </div>
 </template>
 
 <script>
 import { execute } from '../tursoClient'
+import TranscriptModal from '../components/TranscriptModal.vue'
 
 export default {
   name: 'VideoListView',
+  components: { TranscriptModal },
   props: {
     speakers: {
       type: Object,
@@ -156,17 +135,7 @@ export default {
       sortDirection: 'desc',
       currentPage: 1,
       perPage: 50,
-      transcriptCopied: false,
-      transcriptModal: {
-        open: false,
-        title: '',
-        speaker: '',
-        date: '',
-        videoUrl: '',
-        videoId: null,
-        segments: [],
-        loading: false
-      }
+      transcript: null
     }
   },
   computed: {
@@ -195,15 +164,6 @@ export default {
   },
   async mounted() {
     await this.loadVideos()
-    this._onKeydown = (e) => {
-      if (e.key === 'Escape' && this.transcriptModal.open) {
-        this.closeTranscript()
-      }
-    }
-    document.addEventListener('keydown', this._onKeydown)
-  },
-  beforeUnmount() {
-    document.removeEventListener('keydown', this._onKeydown)
   },
   methods: {
     async loadVideos() {
@@ -325,61 +285,16 @@ export default {
       return `${minutes}m`
     },
 
-    formatTimestamp(seconds) {
-      const h = Math.floor(seconds / 3600)
-      const m = Math.floor((seconds % 3600) / 60)
-      const s = Math.floor(seconds % 60)
-      if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-      return `${m}:${String(s).padStart(2, '0')}`
-    },
-
-    async openTranscript(video) {
-      this.transcriptModal.open = true
-      this.transcriptModal.title = video.title
-      this.transcriptModal.speaker = video.speaker
-      this.transcriptModal.date = video.date
-      this.transcriptModal.videoUrl = video.url
-      this.transcriptModal.videoId = video.id
-      this.transcriptModal.loading = true
-      this.transcriptModal.segments = []
-      document.body.style.overflow = 'hidden'
-
-      try {
-        const rows = await execute(
-          `SELECT text, start_time, vimeo_url FROM transcript_segments
-           WHERE video_id = ? ORDER BY start_time`,
-          [video.id]
-        )
-        this.transcriptModal.segments = rows
-      } catch (err) {
-        console.error('Transcript load error:', err)
+    openTranscript(video) {
+      this.transcript = {
+        title: video.title,
+        speaker: video.speaker,
+        date: video.date,
+        videoUrl: video.url,
+        videoId: video.id
       }
-
-      this.transcriptModal.loading = false
     },
 
-    closeTranscript() {
-      this.transcriptModal.open = false
-      document.body.style.overflow = ''
-    },
-
-    async copyTranscript() {
-      const text = this.transcriptModal.segments.map(s => s.text).join(' ')
-      try {
-        await navigator.clipboard.writeText(text)
-      } catch {
-        const textarea = document.createElement('textarea')
-        textarea.value = text
-        textarea.style.position = 'fixed'
-        textarea.style.left = '-9999px'
-        document.body.appendChild(textarea)
-        textarea.select()
-        document.execCommand('copy')
-        document.body.removeChild(textarea)
-      }
-      this.transcriptCopied = true
-      setTimeout(() => { this.transcriptCopied = false }, 1500)
-    }
   }
 }
 </script>
@@ -586,116 +501,10 @@ tr:hover {
   color: #31333F;
 }
 
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal-content {
-  background: white;
-  border-radius: 0.5rem;
-  max-width: 800px;
-  width: 90vw;
-  max-height: 85vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  padding: 1.25rem 1.5rem;
-  border-bottom: 1px solid #e6e9ef;
-}
-
-.modal-header h3 {
-  margin: 0 0 0.25rem 0;
-  font-size: 1.1rem;
-  color: #31333F;
-}
-
-.modal-meta {
-  font-size: 0.9rem;
-  color: #555;
-}
-
-.modal-watch {
-  color: #0068c9;
-  text-decoration: none;
-  margin-left: 0.75rem;
-  font-weight: 500;
-}
-
-.modal-watch:hover {
-  text-decoration: underline;
-}
-
-.modal-copy {
-  background: none;
-  border: 1px solid #0068c9;
-  color: #0068c9;
-  padding: 0.15rem 0.5rem;
-  border-radius: 4px;
-  margin-left: 0.75rem;
-  font-size: 0.85rem;
-  cursor: pointer;
-}
-
-.modal-copy:hover {
-  background: #0068c9;
-  color: white;
-}
-
-.modal-close {
-  background: none;
-  border: none;
-  font-size: 1.25rem;
-  cursor: pointer;
-  color: #555;
-  padding: 0.25rem;
-}
-
-.modal-body {
-  padding: 1.5rem;
-  overflow-y: auto;
-  flex: 1;
-}
-
 .context-loading {
   text-align: center;
   padding: 2rem;
   color: #555;
-}
-
-.transcript-flow {
-  line-height: 1.7;
-}
-
-.transcript-line {
-  margin-bottom: 0.5rem;
-}
-
-.transcript-time {
-  font-family: monospace;
-  font-size: 0.8rem;
-  color: #0068c9;
-  text-decoration: none;
-  margin-right: 0.5rem;
-  white-space: nowrap;
-}
-
-.transcript-time:hover {
-  text-decoration: underline;
 }
 
 @media (max-width: 768px) {

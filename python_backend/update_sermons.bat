@@ -24,6 +24,12 @@ call .venv\Scripts\activate
 set PYTHONIOENCODING=utf-8
 python -u update_and_export.py
 
+REM speakers.json is the only data file the site serves statically; publish it if it changed.
+pushd ..
+git add frontend/public/data/speakers.json
+git diff --cached --quiet -- frontend/public/data/speakers.json || (git commit -m "Update speakers.json" -- frontend/public/data/speakers.json && git push)
+popd
+
 echo.
 echo ========================================
 echo Done! New sermons are live immediately.

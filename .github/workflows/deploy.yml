@@ -26,7 +26,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -38,8 +38,9 @@ jobs:
         run: npm run build
         working-directory: frontend
         env:
-          VUE_APP_TURSO_URL: ${{ secrets.VUE_APP_TURSO_URL }}
-          VUE_APP_TURSO_TOKEN: ${{ secrets.VUE_APP_TURSO_TOKEN }}
+          VITE_BASE: /hhbc-sermon-search/
+          VITE_TURSO_URL: ${{ secrets.VUE_APP_TURSO_URL }}
+          VITE_TURSO_TOKEN: ${{ secrets.VUE_APP_TURSO_TOKEN }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v4

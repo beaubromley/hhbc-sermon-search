@@ -1,15 +1,10 @@
-# HHBC Sermon Search - Python Backend
+# Python backend (update pipeline)
 
-Data processing and export scripts.
+```
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+update_sermons.bat        # full pipeline: download -> database -> references/topics -> speakers.json -> Turso
+```
 
-## Setup
-
-1. Create venv: `python -m venv venv`
-2. Activate: `venv\Scripts\activate`
-3. Install: `pip install -r requirements_local.txt`
-
-## Export Data for Frontend
-
-Run: `python export_to_json.py`
-
-This exports the SQLite database to JSON files in `../frontend/public/data/`
+Steps are listed in `update_and_export.py`. `src/config.py` (gitignored) holds credentials.

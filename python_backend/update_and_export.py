@@ -149,11 +149,6 @@ def main():
     print(f"\n🎉 UPDATE PROCESS COMPLETED!")
     print(f"⏱️  Total time: {duration:.1f} seconds ({duration/60:.1f} minutes)")
 
-    print(f"\n📌 NEXT STEPS:")
-    print(f"1. Test locally: cd ../frontend && npm run serve")
-    print(f"2. Push to GitHub: git add -A && git commit && git push")
-    print(f"3. GitHub Actions will auto-deploy to GitHub Pages")
-
     print(f"\n👋 Update complete!")
 
 if __name__ == "__main__":
