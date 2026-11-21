@@ -43,6 +43,12 @@
       <strong>{{ filters.speaker }}</strong> — {{ speakerStats.count }} sermons, {{ speakerStats.firstYear }}–{{ speakerStats.lastYear }}
     </div>
 
+    <div v-if="passage && !loading" class="passage-panel">
+      <h3>Sermons on {{ passage.label }}</h3>
+      <p v-if="passageNote" class="passage-note">{{ passageNote }}</p>
+      <SermonList :items="passageSermons" :empty="`No sermons found that reference ${passage.label}.`" />
+    </div>
+
     <div v-if="loading" class="loading">
       <div class="loading-spinner"></div>
       <p>Searching...</p>
@@ -51,6 +57,15 @@
     <div v-else-if="results.length > 0" class="results">
       <div class="results-summary">
         <h3>Found {{ results.length }} matches{{ searchTime ? ` in ${searchTime}s` : '' }}</h3>
+        <div class="sort-control">
+          <label for="sort-select">Sort by</label>
+          <select id="sort-select" :value="sortKey" @change="setSort($event.target.value)">
+            <option value="relevance">Best match</option>
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option v-if="sortKey === 'custom'" value="custom" disabled>Column sort</option>
+          </select>
+        </div>
         <div class="stats">
           <span>Title Matches: {{ titleMatches }}</span>
           <span>Transcript Matches: {{ transcriptMatches }}{{ transcriptMatches >= 1000 ? '+' : '' }}</span>
@@ -158,7 +173,7 @@
                     :title="expandedContext === index ? 'Hide context' : 'Show surrounding context'"
                   >{{ expandedContext === index ? '−' : '+' }}</button>
                   <a :href="result.url" target="_blank" class="watch-link" title="Watch video">▶</a>
-                  <button @click="copyLink(result, index)" class="copy-btn" title="Copy link">
+                  <button @click="copyLink(result, index)" class="copy-btn" title="Copy link to this moment">
                     {{ copiedIndex === index ? '✓' : '🔗' }}
                   </button>
                 </td>
@@ -187,20 +202,23 @@
 
     <div v-else-if="searchQuery.length >= 2" class="no-results">
       No matches found for "{{ searchQuery }}"
+      <p v-if="suggestion" class="did-you-mean">
+        Did you mean <a href="#" @click.prevent="useQuery(suggestion)">{{ suggestion }}</a>?
+      </p>
     </div>
 
     <div v-else class="instructions">
       <p>Enter at least 2 characters to search</p>
       <p class="hint">Try searching for topics like "faith", "prayer", "salvation", or Bible references</p>
       <p class="hint">Use quotes for exact phrases: "born again"</p>
+      <p class="hint">Type a passage like "Romans 8:28" to find sermons on it</p>
+      <div v-if="recents.length" class="recents">
+        <span class="recents-label">Recent searches:</span>
+        <button v-for="r in recents" :key="r" class="recent-chip" @click="useQuery(r)">{{ r }}</button>
+        <button class="recent-clear" @click="recents = clearRecents()">Clear</button>
+      </div>
     </div>
 
-    <TranscriptModal
-      v-if="transcript"
-      :video="transcript"
-      :highlight="(text) => highlightMatches(text, searchQuery)"
-      @close="transcript = null"
-    />
 
     <button
       v-show="showBackToTop"
@@ -213,11 +231,17 @@
 
 <script>
 import { execute } from '../tursoClient'
-import TranscriptModal from '../components/TranscriptModal.vue'
+import SermonList from '../components/SermonList.vue'
+import { highlight as highlightText, snippet } from '../lib/highlight'
+import { suggestQuery } from '../lib/spell'
+import { parsePassage } from '../lib/bible'
+import { getRecents, addRecent, clearRecents } from '../lib/storage'
+import { sermonRoute, sermonUrl, copyText } from '../lib/links'
+import { detectSeriesPrefix } from '../lib/series'
 
 export default {
   name: 'SearchView',
-  components: { TranscriptModal },
+  components: { SermonList },
   props: {
     speakers: {
       type: Object,
@@ -232,8 +256,8 @@ export default {
       searchTime: null,
       resultTab: 'all',
       searchTimeout: null,
-      sortColumn: 'date',
-      sortDirection: 'desc',
+      sortColumn: 'rank',
+      sortDirection: 'asc',
       filters: {
         speaker: '',
         dateFrom: '',
@@ -247,7 +271,11 @@ export default {
       contextSegments: [],
       contextLoading: false,
       speakerStats: null,
-      transcript: null
+      suggestion: null,
+      passage: null,
+      passageSermons: [],
+      passageNote: '',
+      recents: getRecents()
     }
   },
   computed: {
@@ -258,6 +286,11 @@ export default {
     currentMonth() {
       const d = new Date()
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    },
+    sortKey() {
+      if (this.sortColumn === 'rank') return 'relevance'
+      if (this.sortColumn === 'date') return this.sortDirection === 'desc' ? 'newest' : 'oldest'
+      return 'custom'
     },
     titleMatches() {
       return this.results.filter(r => r.type === 'Title').length
@@ -365,6 +398,14 @@ export default {
     window.addEventListener('scroll', this.handleScroll)
     this.restoreFromUrl()
   },
+  activated() {
+    window.addEventListener('keydown', this.handleKeydown)
+    window.addEventListener('scroll', this.handleScroll)
+  },
+  deactivated() {
+    window.removeEventListener('keydown', this.handleKeydown)
+    window.removeEventListener('scroll', this.handleScroll)
+  },
   beforeUnmount() {
     window.removeEventListener('keydown', this.handleKeydown)
     window.removeEventListener('scroll', this.handleScroll)
@@ -404,7 +445,7 @@ export default {
       if (this.filters.dateTo) params.set('to', this.filters.dateTo)
 
       const qs = params.toString()
-      const url = window.location.pathname + (qs ? '?' + qs : '')
+      const url = window.location.pathname + (qs ? '?' + qs : '') + window.location.hash
       history.replaceState(null, '', url)
     },
 
@@ -472,34 +513,70 @@ export default {
     },
 
     highlightMatches(text, query) {
-      const safe = text.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      return highlightText(text, query)
+    },
 
-      const terms = []
-      const phraseRegex = /"([^"]+)"/g
-      let match
-      let lastIndex = 0
+    clearRecents,
 
-      while ((match = phraseRegex.exec(query)) !== null) {
-        const before = query.substring(lastIndex, match.index)
-        before.split(/\s+/).filter(w => w.length > 0 && !/^[":*(){}^~+\-\\]+$/.test(w)).forEach(w => {
-          terms.push(w.replace(/[":*(){}^~+\-\\]/g, ''))
-        })
-        terms.push(match[1].trim())
-        lastIndex = phraseRegex.lastIndex
+    useQuery(q) {
+      this.searchQuery = q
+      this.handleSearch()
+    },
+
+    setSort(key) {
+      if (key === 'relevance') {
+        this.sortColumn = 'rank'
+        this.sortDirection = 'asc'
+      } else if (key === 'newest' || key === 'oldest') {
+        this.sortColumn = 'date'
+        this.sortDirection = key === 'newest' ? 'desc' : 'asc'
       }
+    },
 
-      const remaining = query.substring(lastIndex)
-      remaining.split(/\s+/).filter(w => w.length > 0 && !/^[":*(){}^~+\-\\]+$/.test(w)).forEach(w => {
-        terms.push(w.replace(/[":*(){}^~+\-\\]/g, ''))
-      })
+    async loadPassageSermons(p) {
+      const run = (verseSql, extraArgs) => execute(
+        `SELECT v.video_id, v.title, v.date_published, MIN(br.start_time) AS t, COUNT(*) AS refs
+         FROM bible_references br
+         JOIN videos v ON v.video_id = br.video_id
+         WHERE br.book = ? AND br.chapter = ?${verseSql}
+         GROUP BY v.video_id
+         ORDER BY refs DESC, v.date_published DESC
+         LIMIT 60`,
+        [p.book, p.chapter, ...extraArgs]
+      )
 
-      if (terms.length === 0) return safe
-
-      const sorted = [...terms].sort((a, b) => b.length - a.length)
-      const escaped = sorted.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-      const regex = new RegExp(`(${escaped.join('|')})`, 'gi')
-
-      return safe.replace(regex, '<strong>$1</strong>')
+      try {
+        let rows = []
+        let note = ''
+        if (p.verseStart) {
+          // Most stored references have no verse number, but the spoken text does ("Romans 8 28").
+          const last = Math.min(p.verseEnd || p.verseStart, p.verseStart + 9)
+          const likes = []
+          for (let v = p.verseStart; v <= last; v++) likes.push(`%${p.chapter} ${v}%`)
+          const verseSql = ` AND ((br.verse_start IS NOT NULL AND br.verse_start <= ? AND COALESCE(br.verse_end, br.verse_start) >= ?)
+            OR (br.verse_start IS NULL AND (${likes.map(() => 'br.context LIKE ?').join(' OR ')})))`
+          rows = await run(verseSql, [p.verseEnd || p.verseStart, p.verseStart, ...likes])
+          if (rows.length === 0) {
+            rows = await run('', [])
+            note = `No sermon quotes ${p.label} directly; showing sermons that cover ${p.book} ${p.chapter}.`
+          }
+        } else {
+          rows = await run('', [])
+        }
+        // Ignore a slow answer for a query the user has already replaced.
+        if (!this.passage || this.passage.label !== p.label) return
+        this.passageNote = note
+        this.passageSermons = rows.map(r => ({
+          id: String(r.video_id),
+          title: r.title,
+          date: (r.date_published || '').substring(0, 10),
+          speaker: this.speakers[r.video_id] || '',
+          note: `${r.refs} mention${r.refs === 1 ? '' : 's'}`,
+          to: sermonRoute(r.video_id, r.t)
+        }))
+      } catch (err) {
+        console.error('Passage lookup error:', err)
+      }
     },
 
     clearFilters() {
@@ -523,18 +600,7 @@ export default {
     },
 
     async copyLink(result, index) {
-      try {
-        await navigator.clipboard.writeText(result.url)
-      } catch {
-        const textarea = document.createElement('textarea')
-        textarea.value = result.url
-        textarea.style.position = 'fixed'
-        textarea.style.left = '-9999px'
-        document.body.appendChild(textarea)
-        textarea.select()
-        document.execCommand('copy')
-        document.body.removeChild(textarea)
-      }
+      await copyText(sermonUrl(result.videoId, result.type === 'Transcript' ? result.startTime : 0))
       this.copiedIndex = index
       setTimeout(() => { this.copiedIndex = null }, 1500)
     },
@@ -551,24 +617,7 @@ export default {
     },
 
     detectSeriesPrefix(title) {
-      const original = title.trim()
-      // Try patterns that may have subtitles after the number (strip number + everything after)
-      const patterns = [
-        /\s*[-–—]\s*(?:Part|Pt\.?|Week|Session|Lesson)\s+\d+.*/i,
-        /\s*(?:Part|Pt\.?|Week|Session|Lesson)\s+\d+.*/i,
-        /\s*[-–—]\s*#\s*\d+.*/i,
-        /\s*#\s*\d+.*/i,
-        /\s*\(\s*(?:Part|Pt\.?)?\s*\d+\s*\).*/i,
-        /\s*[-–—]\s*\d+\s*[-–—:].*/,
-        /\s+\d+\s*$/,
-      ]
-      for (const pattern of patterns) {
-        const prefix = original.replace(pattern, '').trim()
-        if (prefix !== original && prefix.length > 2) {
-          return prefix
-        }
-      }
-      return null
+      return detectSeriesPrefix(title)
     },
 
     toggleSeriesGroup(prefix) {
@@ -582,13 +631,7 @@ export default {
     },
 
     openTranscript(result) {
-      this.transcript = {
-        title: result.title,
-        speaker: result.speaker,
-        date: result.date,
-        videoUrl: result.url,
-        videoId: result.videoId
-      }
+      this.$router.push(sermonRoute(result.videoId, result.type === 'Transcript' ? result.startTime : 0, this.searchQuery.trim()))
     },
 
     async toggleContext(index) {
@@ -659,6 +702,13 @@ export default {
       const query = this.searchQuery.trim()
       const start = performance.now()
 
+      this.suggestion = null
+      const passage = parsePassage(query)
+      this.passage = passage
+      this.passageSermons = []
+      this.passageNote = ''
+      if (passage) this.loadPassageSermons(passage)
+
       try {
         const ftsExpr = this.buildFtsQuery(query)
 
@@ -705,11 +755,12 @@ export default {
             titleParams
           ),
           ftsExpr ? execute(
-            `SELECT ts.video_id, v.title, v.date_published, ts.start_time, ts.text, ts.vimeo_url
+            `SELECT ts.video_id, v.title, v.date_published, ts.start_time, ts.text, ts.vimeo_url, bm25(transcript_fts) AS rank
              FROM transcript_fts fts
              JOIN transcript_segments ts ON fts.rowid = ts.rowid
              JOIN videos v ON ts.video_id = v.video_id
              WHERE transcript_fts MATCH ?${transcriptFilterSql}
+             ORDER BY rank
              LIMIT 1000`,
             transcriptParams
           ) : Promise.resolve([])
@@ -730,12 +781,13 @@ export default {
             url: row.url,
             videoId: row.video_id,
             startTime: 0,
+            rank: -1000,
             score: 10
           })
         })
 
         transcriptRows.forEach(row => {
-          const matchText = row.text.substring(0, 200) + (row.text.length > 200 ? '...' : '')
+          const matchText = snippet(row.text, query)
           results.push({
             type: 'Transcript',
             date: row.date_published.substring(0, 10),
@@ -747,12 +799,24 @@ export default {
             url: row.vimeo_url,
             videoId: row.video_id,
             startTime: row.start_time,
+            rank: row.rank,
             score: 1
           })
         })
 
         this.results = results
         this.searchTime = ((performance.now() - start) / 1000).toFixed(1)
+
+        if (results.length === 0 && !passage) {
+          suggestQuery(query).then(fix => {
+            if (this.searchQuery.trim() === query) this.suggestion = fix
+          })
+        } else if (results.length > 0) {
+          clearTimeout(this._recentTimer)
+          this._recentTimer = setTimeout(() => {
+            if (this.searchQuery.trim() === query) this.recents = addRecent(query)
+          }, 1500)
+        }
       } catch (error) {
         console.error('Search error:', error)
       }
@@ -1386,5 +1450,85 @@ tr.group-child td {
     padding-bottom: 0;
   }
 
+}
+
+.passage-panel {
+  margin-bottom: 1.5rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #cfe0f5;
+  background: #f4f8fd;
+  border-radius: 6px;
+}
+
+.passage-panel h3 {
+  color: #31333F;
+  font-size: 1.1rem;
+  margin-bottom: 0.5rem;
+}
+
+.passage-note {
+  color: #808495;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+
+.sort-control {
+  margin: 0.5rem 0;
+  font-size: 0.9rem;
+  color: #808495;
+}
+
+.sort-control select {
+  margin-left: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid #d0d4dc;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.did-you-mean {
+  margin-top: 0.75rem;
+  font-style: normal;
+}
+
+.did-you-mean a {
+  color: #0068c9;
+  font-weight: 600;
+}
+
+.recents {
+  margin-top: 1.25rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.recents-label {
+  color: #808495;
+  font-size: 0.9rem;
+}
+
+.recent-chip {
+  background: #f0f2f6;
+  border: none;
+  border-radius: 999px;
+  padding: 0.3rem 0.8rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: #31333F;
+}
+
+.recent-chip:hover {
+  background: #e0e5ee;
+}
+
+.recent-clear {
+  background: none;
+  border: none;
+  color: #808495;
+  cursor: pointer;
+  font-size: 0.85rem;
+  text-decoration: underline;
 }
 </style>

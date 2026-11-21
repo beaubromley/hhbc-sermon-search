@@ -5,9 +5,13 @@ Default: incremental (only uploads new videos). Use --full for a complete re-upl
 Usage:
   python upload_to_turso.py          # incremental sync
   python upload_to_turso.py --full   # drop everything and re-upload
+  python upload_to_turso.py --reindex  # rebuild FTS index + spell-check vocabulary only
 """
+import re
 import sqlite3
 import requests
+from collections import Counter
+from datetime import datetime, timezone
 import sys
 import time
 import threading
@@ -173,13 +177,43 @@ def rebuild_fts5():
         execute('DROP TABLE IF EXISTS transcript_fts')
     except Exception as e:
         print(f"  Warning dropping FTS table: {e}")
+    # porter: "forgive" also finds forgiving / forgiveness / forgiven
     execute('''CREATE VIRTUAL TABLE transcript_fts USING fts5(
         text,
         content=transcript_segments,
-        content_rowid=rowid
+        content_rowid=rowid,
+        tokenize='porter unicode61'
     )''')
     execute("INSERT INTO transcript_fts(transcript_fts) VALUES('rebuild')")
     print("  FTS5 index rebuilt.")
+
+
+def sync_vocab(local):
+    """Rebuild the word-frequency table the site uses for "Did you mean...?" suggestions."""
+    print("\nBuilding spell-check vocabulary...")
+    counts = Counter()
+    for (text,) in local.execute('SELECT text FROM transcript_segments'):
+        if text:
+            counts.update(re.findall(r"[a-z]+(?:'[a-z]+)?", text.lower()))
+    words = [(w, c) for w, c in counts.items() if c >= 3 and len(w) >= 3]
+    print(f"  {len(words):,} words kept (of {len(counts):,} distinct)")
+
+    execute('DROP TABLE IF EXISTS vocab')
+    execute('CREATE TABLE vocab (term TEXT PRIMARY KEY, cnt INTEGER)')
+    batches = [
+        [('INSERT INTO vocab (term, cnt) VALUES (?, ?)', [w, c]) for w, c in words[i:i + BATCH_SIZE]]
+        for i in range(0, len(words), BATCH_SIZE)
+    ]
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        list(executor.map(send_batch, batches))
+    print("  Vocabulary uploaded.")
+
+
+def touch_sync_meta():
+    """Heartbeat: record when the pipeline last completed, so the site's freshness check can alert if it stalls."""
+    execute('CREATE TABLE IF NOT EXISTS sync_meta (key TEXT PRIMARY KEY, value TEXT)')
+    execute("INSERT OR REPLACE INTO sync_meta (key, value) VALUES ('last_sync', ?)",
+            [datetime.now(timezone.utc).isoformat(timespec='seconds')])
 
 
 def ensure_tables():
@@ -234,6 +268,7 @@ def upload_incremental():
     if not new_ids:
         print("\n✅ Turso is already up to date! No new videos to sync.")
         local.close()
+        touch_sync_meta()
         return
 
     print(f"\n  {len(new_ids)} new video(s) to upload")
@@ -270,10 +305,11 @@ def upload_incremental():
         where_clause=f'video_id IN ({placeholders})',
         where_args=new_ids_list)
 
-    local.close()
-
-    # Rebuild FTS5 to include new content
+    # Rebuild FTS5 and spell-check vocabulary to include new content
     rebuild_fts5()
+    sync_vocab(local)
+    local.close()
+    touch_sync_meta()
 
     elapsed = time.time() - start_total
     print(f"\nIncremental sync complete! {len(new_ids)} new video(s) in {elapsed:.1f}s ({elapsed/60:.1f} min)")
@@ -315,16 +351,23 @@ def upload_full():
         ['id', 'video_id', 'topic', 'keyword_matched', 'start_time', 'end_time', 'context'],
         local)
 
-    local.close()
-
     rebuild_fts5()
+    sync_vocab(local)
+    local.close()
+    touch_sync_meta()
 
     elapsed = time.time() - start_total
     print(f"\nFull upload complete! Total time: {elapsed:.1f}s ({elapsed/60:.1f} min)")
 
 
 if __name__ == '__main__':
-    if '--full' in sys.argv:
+    if '--reindex' in sys.argv:
+        _local = sqlite3.connect(LOCAL_DB)
+        rebuild_fts5()
+        sync_vocab(_local)
+        _local.close()
+        touch_sync_meta()
+    elif '--full' in sys.argv:
         upload_full()
     else:
         upload_incremental()

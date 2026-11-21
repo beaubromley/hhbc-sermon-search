@@ -234,21 +234,15 @@
       No Bible references found
     </div>
 
-    <TranscriptModal
-      v-if="transcript"
-      :video="transcript"
-      @close="transcript = null"
-    />
   </div>
 </template>
 
 <script>
 import { execute } from '../tursoClient'
-import TranscriptModal from '../components/TranscriptModal.vue'
+import { sermonRoute } from '../lib/links'
 
 export default {
   name: 'BibleHeatMapView',
-  components: { TranscriptModal },
   props: {
     speakers: {
       type: Object,
@@ -271,7 +265,6 @@ export default {
       chapterSermonsCache: {},
       uniqueSpeakers: [],
       uniqueYears: [],
-      transcript: null,
       oldTestamentBooks: [
         'Genesis', 'Exodus', 'Leviticus', 'Numbers', 'Deuteronomy',
         'Joshua', 'Judges', 'Ruth', '1 Samuel', '2 Samuel',
@@ -510,13 +503,8 @@ export default {
     },
 
     openTranscript(sermon) {
-      this.transcript = {
-        title: sermon.title,
-        speaker: this.speakers[sermon.videoId] || 'Unknown',
-        date: sermon.date,
-        videoUrl: sermon.url || sermon.watchUrl,
-        videoId: sermon.videoId
-      }
+      const m = /#t=(\d+)s/.exec(sermon.url || sermon.watchUrl || '')
+      this.$router.push(sermonRoute(sermon.videoId, m ? Number(m[1]) : 0))
     },
 
   }

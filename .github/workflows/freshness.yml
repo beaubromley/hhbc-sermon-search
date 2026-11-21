@@ -1,0 +1,47 @@
+name: Check sermon data is fresh
+
+# The update pipeline records a heartbeat (sync_meta.last_sync) in Turso after every run.
+# If it goes quiet for too long this job fails, and GitHub emails the repo owner about
+# the failed run, so a stalled refresh doesn't go unnoticed for weeks.
+
+on:
+  schedule:
+    - cron: '0 14 * * *'   # daily, 14:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  freshness:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check last pipeline run
+        env:
+          TURSO_URL: ${{ secrets.VUE_APP_TURSO_URL }}
+          TURSO_TOKEN: ${{ secrets.VUE_APP_TURSO_TOKEN }}
+          MAX_AGE_DAYS: '6'
+        run: |
+          python3 - <<'PY'
+          import json, os, sys, urllib.request
+          from datetime import datetime, timezone
+
+          body = json.dumps({"requests": [
+              {"type": "execute", "stmt": {"sql": "SELECT value FROM sync_meta WHERE key = 'last_sync'"}},
+              {"type": "close"}]}).encode()
+          req = urllib.request.Request(
+              os.environ["TURSO_URL"].rstrip("/").replace("libsql://", "https://") + "/v2/pipeline",
+              data=body,
+              headers={"Authorization": "Bearer " + os.environ["TURSO_TOKEN"], "Content-Type": "application/json"})
+          result = json.load(urllib.request.urlopen(req, timeout=30))["results"][0]
+          if result.get("type") == "error":
+              sys.exit("Query failed: " + result["error"]["message"])
+          rows = result["response"]["result"]["rows"]
+          if not rows:
+              sys.exit("No heartbeat found: the update pipeline has not recorded a run.")
+          last = datetime.fromisoformat(rows[0][0]["value"])
+          age = (datetime.now(timezone.utc) - last).total_seconds() / 86400
+          print(f"Last pipeline run: {last.isoformat()} ({age:.1f} days ago)")
+          if age > float(os.environ["MAX_AGE_DAYS"]):
+              sys.exit(f"Stale: the sermon update has not run in {age:.1f} days.")
+          PY

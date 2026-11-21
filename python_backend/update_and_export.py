@@ -73,7 +73,8 @@ def rebuild_fts5():
         conn.execute('''CREATE VIRTUAL TABLE transcript_fts USING fts5(
             text,
             content=transcript_segments,
-            content_rowid=rowid
+            content_rowid=rowid,
+            tokenize='porter unicode61'
         )''')
         conn.execute("INSERT INTO transcript_fts(transcript_fts) VALUES('rebuild')")
         conn.commit()

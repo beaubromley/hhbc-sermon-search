@@ -97,21 +97,15 @@
       No videos match the selected filters
     </div>
 
-    <TranscriptModal
-      v-if="transcript"
-      :video="transcript"
-      @close="transcript = null"
-    />
   </div>
 </template>
 
 <script>
 import { execute } from '../tursoClient'
-import TranscriptModal from '../components/TranscriptModal.vue'
+import { sermonRoute } from '../lib/links'
 
 export default {
   name: 'VideoListView',
-  components: { TranscriptModal },
   props: {
     speakers: {
       type: Object,
@@ -134,8 +128,7 @@ export default {
       sortColumn: 'date',
       sortDirection: 'desc',
       currentPage: 1,
-      perPage: 50,
-      transcript: null
+      perPage: 50
     }
   },
   computed: {
@@ -286,13 +279,7 @@ export default {
     },
 
     openTranscript(video) {
-      this.transcript = {
-        title: video.title,
-        speaker: video.speaker,
-        date: video.date,
-        videoUrl: video.url,
-        videoId: video.id
-      }
+      this.$router.push(sermonRoute(video.id))
     },
 
   }
