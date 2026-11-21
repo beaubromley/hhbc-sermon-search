@@ -50,10 +50,9 @@ export function toggleFavorite(id) {
   return next.includes(key)
 }
 
+// Light unless the visitor has chosen dark with the toggle.
 export function getTheme() {
-  const saved = read('hhbc-theme', null)
-  if (saved) return saved
-  return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  return read('hhbc-theme', null) === 'dark' ? 'dark' : 'light'
 }
 
 export function saveTheme(theme) {
