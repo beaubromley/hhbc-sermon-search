@@ -1,5 +1,7 @@
 # HHBC Sermon Search
 
+**Live site: https://beaubromley.github.io/hhbc-sermon-search/**
+
 Searchable archive of Henderson Hills Baptist Church sermons: full-text transcript search, a video list, and a Bible-reference heat map.
 
 - `frontend/` - Vue 3 + Vite single-page app. Reads sermon data live from a Turso (libSQL) database over HTTP with a read-only token.
